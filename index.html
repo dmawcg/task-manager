@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kurt's Task Manager</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo, useEffect } = React;
+    const { createClient } = supabase;
+
+    // Initialize Supabase client
+    const supabaseUrl = 'https://wcvsukhozkrxeninlznt.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndjdnN1a2hvemtyeGVuaW5sem50Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4ODQxNzUsImV4cCI6MjA3ODQ2MDE3NX0.TscW4xlwrdKtT7cARFzz3KZwvJ-3mZ4WS9o5ju6vim8';
+    const supabaseClient = createClient(supabaseUrl, supabaseKey);
+
+    // Icons as components
+    const CalendarIcon = () => <i data-lucide="calendar" className="inline-block w-4 h-4"></i>;
+    const DollarSignIcon = () => <i data-lucide="dollar-sign" className="inline-block w-3 h-3"></i>;
+    const FilterIcon = () => <i data-lucide="filter" className="inline-block w-4 h-4"></i>;
+    const PlusIcon = () => <i data-lucide="plus" className="inline-block w-5 h-5"></i>;
+    const Trash2Icon = () => <i data-lucide="trash-2" className="inline-block w-4 h-4"></i>;
+    const CheckCircle2Icon = () => <i data-lucide="check-circle-2" className="inline-block w-6 h-6"></i>;
+    const CircleIcon = () => <i data-lucide="circle" className="inline-block w-6 h-6"></i>;
+    const Edit2Icon = () => <i data-lucide="edit-2" className="inline-block w-4 h-4"></i>;
+    const XIcon = () => <i data-lucide="x" className="inline-block w-5 h-5"></i>;
+    const GripVerticalIcon = () => <i data-lucide="grip-vertical" className="inline-block w-5 h-5"></i>;
+    const CalendarDaysIcon = () => <i data-lucide="calendar-days" className="inline-block w-4 h-4"></i>;
+
+    // Billable Chart Component
+    const BillableChart = ({ tasks }) => {
+      const chartData = useMemo(() => {
+        const billable = tasks.filter(t => t.billable === 'Yes').length;
+        const nonBillable = tasks.filter(t => t.billable === 'No').length;
+        const na = tasks.filter(t => t.billable === 'N/A').length;
+        const total = billable + nonBillable + na;
+        
+        return {
+          billable,
+          nonBillable,
+          na,
+          total,
+          billablePercent: total > 0 ? ((billable / total) * 100).toFixed(1) : 0,
+          nonBillablePercent: total > 0 ? ((nonBillable / total) * 100).toFixed(1) : 0,
+          naPercent: total > 0 ? ((na / total) * 100).toFixed(1) : 0
+        };
+      }, [tasks]);
+
+      if (chartData.total === 0) {
+        return (
+          <div className="text-center py-8 text-gray-500">
+            No active tasks to display
+          </div>
+        );
+      }
+
+      const billableAngle = (chartData.billable / chartData.total) * 360;
+      const nonBillableAngle = (chartData.nonBillable / chartData.total) * 360;
+
+      return (
+        <div className="flex flex-col md:flex-row items-center gap-8">
+          <div className="relative w-48 h-48 flex-shrink-0">
+            <svg viewBox="0 0 100 100" className="transform -rotate-90">
+              {chartData.billable > 0 && (
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="40"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="20"
+                  strokeDasharray={`${(billableAngle / 360) * 251.2} 251.2`}
+                  strokeDashoffset="0"
+                />
+              )}
+              {chartData.nonBillable > 0 && (
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="40"
+                  fill="none"
+                  stroke="#ef4444"
+                  strokeWidth="20"
+                  strokeDasharray={`${(nonBillableAngle / 360) * 251.2} 251.2`}
+                  strokeDashoffset={`-${(billableAngle / 360) * 251.2}`}
+                />
+              )}
+              {chartData.na > 0 && (
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="40"
+                  fill="none"
+                  stroke="#9ca3af"
+                  strokeWidth="20"
+                  strokeDasharray={`${((chartData.na / chartData.total) * 360) / 360 * 251.2} 251.2`}
+                  strokeDashoffset={`-${((billableAngle + nonBillableAngle) / 360) * 251.2}`}
+                />
+              )}
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-gray-900">{chartData.total}</div>
+                <div className="text-sm text-gray-600">Total</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 space-y-3">
+            {chartData.billable > 0 && (
+              <div className="flex items-center justify-between bg-green-50 p-3 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+                  <span className="font-semibold text-gray-900">Billable</span>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold text-gray-900">{chartData.billable}</div>
+                  <div className="text-sm text-gray-600">{chartData.billablePercent}%</div>
+                </div>
+              </div>
+            )}
+            {chartData.nonBillable > 0 && (
+              <div className="flex items-center justify-between bg-red-50 p-3 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 bg-red-500 rounded-full"></div>
+                  <span className="font-semibold text-gray-900">Non-Billable</span>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold text-gray-900">{chartData.nonBillable}</div>
+                  <div className="text-sm text-gray-600">{chartData.nonBillablePercent}%</div>
+                </div>
+              </div>
+            )}
+            {chartData.na > 0 && (
+              <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 bg-gray-400 rounded-full"></div>
+                  <span className="font-semibold text-gray-900">N/A</span>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold text-gray-900">{chartData.na}</div>
+                  <div className="text-sm text-gray-600">{chartData.naPercent}%</div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    const TaskManager = () => {
+      const [tasks, setTasks] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [showForm, setShowForm] = useState(false);
+      const [editingTask, setEditingTask] = useState(null);
+      const [filterClient, setFilterClient] = useState('All');
+      const [filterBillable, setFilterBillable] = useState('All');
+      const [sortBy, setSortBy] = useState('manual');
+      const [showCompleted, setShowCompleted] = useState(false);
+
+      const [formData, setFormData] = useState({
+        client: '',
+        description: '',
+        billable: 'Yes',
+        deadline: '',
+        priority: 'Medium'
+      });
+
+      const [formErrors, setFormErrors] = useState({});
+
+      useEffect(() => {
+        loadTasks();
+        lucide.createIcons();
+      }, []);
+
+      useEffect(() => {
+        lucide.createIcons();
+      });
+
+      const loadTasks = async () => {
+        try {
+          setLoading(true);
+          const { data, error } = await supabaseClient
+            .from('tasks')
+            .select('*')
+            .order('id', { ascending: true });
+
+          if (error) throw error;
+          setTasks(data || []);
+        } catch (error) {
+          console.error('Error loading tasks:', error);
+          alert('Error loading tasks. Please refresh the page.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const availableClients = useMemo(() => {
+        const filtered = tasks.filter(task => {
+          if (!showCompleted && task.completed) return false;
+          if (filterBillable !== 'All' && task.billable !== filterBillable) return false;
+          return true;
+        });
+        const uniqueClients = [...new Set(filtered.map(t => t.client))].sort();
+        return uniqueClients;
+      }, [tasks, filterBillable, showCompleted]);
+
+      const getTaskStatus = (deadline) => {
+        if (!deadline) return 'no-deadline';
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const taskDate = new Date(deadline);
+        
+        if (isNaN(taskDate.getTime())) return 'no-deadline';
+        
+        taskDate.setHours(0, 0, 0, 0);
+        
+        const daysUntil = Math.floor((taskDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (daysUntil < 0) return 'overdue';
+        if (daysUntil === 0) return 'today';
+        if (daysUntil <= 7) return 'upcoming';
+        return 'future';
+      };
+
+      const filteredAndSortedTasks = useMemo(() => {
+        let filtered = tasks.filter(task => {
+          if (!showCompleted && task.completed) return false;
+          if (filterClient !== 'All' && task.client !== filterClient) return false;
+          if (filterBillable !== 'All' && task.billable !== filterBillable) return false;
+          return true;
+        });
+
+        if (sortBy !== 'manual') {
+          filtered.sort((a, b) => {
+            if (sortBy === 'deadline') {
+              if (!a.deadline && !b.deadline) return 0;
+              if (!a.deadline) return 1;
+              if (!b.deadline) return -1;
+              return new Date(a.deadline) - new Date(b.deadline);
+            } else if (sortBy === 'priority') {
+              const priorityOrder = { High: 0, Medium: 1, Low: 2 };
+              return priorityOrder[a.priority] - priorityOrder[b.priority];
+            } else if (sortBy === 'client') {
+              return a.client.localeCompare(b.client);
+            }
+            return 0;
+          });
+        }
+
+        return filtered;
+      }, [tasks, filterClient, filterBillable, sortBy, showCompleted]);
+
+      const handleSubmit = async () => {
+        const errors = {};
+        
+        if (!formData.client.trim()) {
+          errors.client = 'Client is required';
+        }
+        if (!formData.description.trim()) {
+          errors.description = 'Description is required';
+        }
+        
+        if (Object.keys(errors).length > 0) {
+          setFormErrors(errors);
+          return;
+        }
+        
+        try {
+          if (editingTask) {
+            const { error } = await supabaseClient
+              .from('tasks')
+              .update({
+                client: formData.client,
+                description: formData.description,
+                billable: formData.billable,
+                priority: formData.priority,
+                deadline: formData.deadline || null
+              })
+              .eq('id', editingTask.id);
+
+            if (error) throw error;
+            setEditingTask(null);
+          } else {
+            const { error } = await supabaseClient
+              .from('tasks')
+              .insert([{
+                client: formData.client,
+                description: formData.description,
+                billable: formData.billable,
+                priority: formData.priority,
+                deadline: formData.deadline || null,
+                completed: false
+              }]);
+
+            if (error) throw error;
+          }
+          
+          await loadTasks();
+          
+          setFormData({ client: '', description: '', billable: 'Yes', deadline: '', priority: 'Medium' });
+          setFormErrors({});
+          setShowForm(false);
+        } catch (error) {
+          console.error('Error saving task:', error);
+          alert('Error saving task. Please try again.');
+        }
+      };
+
+      const handleEdit = (task) => {
+        setEditingTask(task);
+        setFormData({
+          client: task.client,
+          description: task.description,
+          billable: task.billable,
+          deadline: task.deadline || '',
+          priority: task.priority
+        });
+        setFormErrors({});
+        setShowForm(true);
+      };
+
+      const handleDelete = async (id) => {
+        try {
+          const { error } = await supabaseClient
+            .from('tasks')
+            .delete()
+            .eq('id', id);
+
+          if (error) throw error;
+          
+          await loadTasks();
+        } catch (error) {
+          console.error('Error deleting task:', error);
+          alert('Error deleting task. Please try again.');
+        }
+      };
+
+      const toggleComplete = async (id) => {
+        try {
+          const task = tasks.find(t => t.id === id);
+          const { error } = await supabaseClient
+            .from('tasks')
+            .update({ completed: !task.completed })
+            .eq('id', id);
+
+          if (error) throw error;
+          
+          await loadTasks();
+        } catch (error) {
+          console.error('Error updating task:', error);
+          alert('Error updating task. Please try again.');
+        }
+      };
+
+      const stats = useMemo(() => {
+        const totalTasks = tasks.filter(t => !t.completed).length;
+        const overdueTasks = tasks.filter(t => !t.completed && getTaskStatus(t.deadline) === 'overdue').length;
+        const todayTasks = tasks.filter(t => !t.completed && getTaskStatus(t.deadline) === 'today').length;
+        const completedTasks = tasks.filter(t => t.completed).length;
+        
+        return { totalTasks, overdueTasks, todayTasks, completedTasks };
+      }, [tasks]);
+
+      if (loading) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-8 flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+              <p className="text-gray-600 font-medium">Loading tasks...</p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-8">
+          <div className="max-w-7xl mx-auto">
+            <div className="bg-white rounded-2xl shadow-sm p-6 md:p-8 mb-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Kurt's Task Manager</h1>
+                  <p className="text-gray-600">Organize and track your projects</p>
+                </div>
+                
+                <div className="flex flex-wrap gap-2">
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-2.5 flex-1">
+                    <div className="text-xl md:text-2xl font-bold text-blue-700">{stats.totalTasks}</div>
+                    <div className="text-xs text-blue-600 font-medium">Active</div>
+                  </div>
+                  {stats.overdueTasks > 0 && (
+                    <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-2.5 flex-1">
+                      <div className="text-xl md:text-2xl font-bold text-red-700">{stats.overdueTasks}</div>
+                      <div className="text-xs text-red-600 font-medium">Overdue</div>
+                    </div>
+                  )}
+                  {stats.todayTasks > 0 && (
+                    <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg p-2.5 flex-1">
+                      <div className="text-xl md:text-2xl font-bold text-yellow-700">{stats.todayTasks}</div>
+                      <div className="text-xs text-yellow-600 font-medium">Today</div>
+                    </div>
+                  )}
+                  <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-2.5 flex-1">
+                    <div className="text-xl md:text-2xl font-bold text-green-700">{stats.completedTasks}</div>
+                    <div className="text-xs text-green-600 font-medium">Done</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm p-6 md:p-8">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+                <h2 className="text-xl font-bold text-gray-900">Tasks</h2>
+                <button
+                  onClick={() => {
+                    setShowForm(!showForm);
+                    if (showForm) {
+                      setEditingTask(null);
+                      setFormData({ client: '', description: '', billable: 'Yes', deadline: '', priority: 'Medium' });
+                      setFormErrors({});
+                    }
+                  }}
+                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-all shadow-sm hover:shadow-md"
+                >
+                  {showForm ? <XIcon /> : <PlusIcon />}
+                  <span className="hidden sm:inline">{showForm ? 'Cancel' : 'Add Task'}</span>
+                </button>
+              </div>
+
+              {showForm && (
+                <div className="mb-6 bg-gradient-to-br from-indigo-50 to-blue-50 p-6 rounded-xl border border-indigo-100">
+                  <h3 className="text-xl font-bold text-gray-900 mb-4">
+                    {editingTask ? 'Edit Task' : 'New Task'}
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Client *</label>
+                      <input
+                        type="text"
+                        value={formData.client}
+                        onChange={(e) => {
+                          setFormData({...formData, client: e.target.value});
+                          if (formErrors.client) setFormErrors({...formErrors, client: null});
+                        }}
+                        className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none transition-colors ${
+                          formErrors.client ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-indigo-500'
+                        }`}
+                        placeholder="Enter client name"
+                      />
+                      {formErrors.client && <p className="mt-1 text-sm text-red-600">{formErrors.client}</p>}
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Deadline</label>
+                      <input
+                        type="date"
+                        value={formData.deadline}
+                        onChange={(e) => setFormData({...formData, deadline: e.target.value})}
+                        className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 transition-colors"
+                      />
+                    </div>
+                    
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Description *</label>
+                      <textarea
+                        value={formData.description}
+                        onChange={(e) => {
+                          setFormData({...formData, description: e.target.value});
+                          if (formErrors.description) setFormErrors({...formErrors, description: null});
+                        }}
+                        className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none transition-colors resize-none ${
+                          formErrors.description ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-indigo-500'
+                        }`}
+                        rows="3"
+                        placeholder="Enter task description"
+                      />
+                      {formErrors.description && <p className="mt-1 text-sm text-red-600">{formErrors.description}</p>}
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Billable</label>
+                      <select
+                        value={formData.billable}
+                        onChange={(e) => setFormData({...formData, billable: e.target.value})}
+                        className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 transition-colors bg-white"
+                      >
+                        <option>Yes</option>
+                        <option>No</option>
+                        <option>N/A</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
+                      <select
+                        value={formData.priority}
+                        onChange={(e) => setFormData({...formData, priority: e.target.value})}
+                        className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 transition-colors bg-white"
+                      >
+                        <option>High</option>
+                        <option>Medium</option>
+                        <option>Low</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-6 flex gap-3">
+                    <button
+                      onClick={handleSubmit}
+                      className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all shadow-sm hover:shadow-md"
+                    >
+                      {editingTask ? 'Update Task' : 'Create Task'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowForm(false);
+                        setEditingTask(null);
+                        setFormData({ client: '', description: '', billable: 'Yes', deadline: '', priority: 'Medium' });
+                        setFormErrors({});
+                      }}
+                      className="px-6 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-6 space-y-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg">
+                    <FilterIcon />
+                    <span className="text-sm font-semibold text-gray-700">Filters:</span>
+                  </div>
+                  
+                  <select
+                    value={filterClient}
+                    onChange={(e) => setFilterClient(e.target.value)}
+                    className="px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 transition-colors bg-white font-medium text-gray-700"
+                  >
+                    <option value="All">All Clients</option>
+                    {availableClients.map(client => (
+                      <option key={client} value={client}>{client}</option>
+                    ))}
+                  </select>
+                  
+                  <select
+                    value={filterBillable}
+                    onChange={(e) => setFilterBillable(e.target.value)}
+                    className="px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 transition-colors bg-white font-medium text-gray-700"
+                  >
+                    <option value="All">All Billable</option>
+                    <option value="Yes">Billable: Yes</option>
+                    <option value="No">Billable: No</option>
+                  </select>
+                  
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500 transition-colors bg-white font-medium text-gray-700"
+                  >
+                    <option value="manual">Manual Order</option>
+                    <option value="deadline">Sort by Deadline</option>
+                    <option value="priority">Sort by Priority</option>
+                    <option value="client">Sort by Client</option>
+                  </select>
+                  
+                  <label className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={showCompleted}
+                      onChange={(e) => setShowCompleted(e.target.checked)}
+                      className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Show Completed</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {filteredAndSortedTasks.length === 0 ? (
+                  <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                    <div className="text-gray-400 mb-2">
+                      <CircleIcon />
+                    </div>
+                    <p className="text-gray-600 font-medium">No tasks to display</p>
+                    <p className="text-gray-500 text-sm mt-1">Add a new task or adjust your filters</p>
+                  </div>
+                ) : (
+                  filteredAndSortedTasks.map((task) => {
+                    const status = getTaskStatus(task.deadline);
+                    const statusColors = {
+                      overdue: 'bg-red-50 border-red-200 hover:border-red-300',
+                      today: 'bg-yellow-50 border-yellow-200 hover:border-yellow-300',
+                      upcoming: 'bg-orange-50 border-orange-200 hover:border-orange-300',
+                      future: 'bg-white border-gray-200 hover:border-gray-300',
+                      'no-deadline': 'bg-white border-gray-200 hover:border-gray-300'
+                    };
+
+                    return (
+                      <div
+                        key={task.id}
+                        className={`group border-2 rounded-xl p-4 transition-all ${statusColors[status]} ${task.completed ? 'opacity-60' : ''}`}
+                      >
+                        <div className="flex gap-4">
+                          <button
+                            type="button"
+                            onClick={() => toggleComplete(task.id)}
+                            className="flex items-start pt-1 transition-transform hover:scale-110"
+                          >
+                            {task.completed ? <CheckCircle2Icon /> : <CircleIcon />}
+                          </button>
+                          
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-4 mb-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <h3 className={`font-bold text-lg text-gray-900 ${task.completed ? 'line-through' : ''}`}>
+                                    {task.client}
+                                  </h3>
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-2.5 h-2.5 rounded-full ${
+                                      task.priority === 'High' ? 'bg-red-500' :
+                                      task.priority === 'Medium' ? 'bg-yellow-500' : 'bg-green-500'
+                                    }`} />
+                                    {task.billable === 'Yes' && (
+                                      <div className="flex items-center gap-1 bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-semibold">
+                                        <DollarSignIcon />
+                                        <span>Billable</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <p className={`text-gray-700 leading-relaxed ${task.completed ? 'line-through' : ''}`}>
+                                  {task.description}
+                                </p>
+                              </div>
+                              
+                              <div className="flex flex-col items-end gap-2">
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEdit(task)}
+                                    className="p-2 hover:bg-indigo-100 rounded-lg transition-colors"
+                                    title="Edit"
+                                  >
+                                    <Edit2Icon />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDelete(task.id)}
+                                    className="p-2 hover:bg-red-100 rounded-lg transition-colors"
+                                    title="Delete"
+                                  >
+                                    <Trash2Icon />
+                                  </button>
+                                </div>
+                                
+                                {task.deadline && (
+                                  <div className="flex items-center gap-2 text-sm mt-auto">
+                                    <CalendarIcon />
+                                    <span className="text-gray-600 font-medium whitespace-nowrap">
+                                      {new Date(task.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </span>
+                                    {status === 'overdue' && (
+                                      <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap">
+                                        Overdue
+                                      </span>
+                                    )}
+                                    {status === 'today' && (
+                                      <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap">
+                                        Due Today
+                                      </span>
+                                    )}
+                                    {status === 'upcoming' && (
+                                      <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap">
+                                        This Week
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {filteredAndSortedTasks.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-gray-200">
+                  <div className="grid grid-cols-2 md:flex md:flex-wrap gap-4 text-sm mb-8">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-red-50 border-2 border-red-200 rounded"></div>
+                      <span className="text-gray-700 font-medium">Overdue</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-yellow-50 border-2 border-yellow-200 rounded"></div>
+                      <span className="text-gray-700 font-medium">Due Today</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-orange-50 border-2 border-orange-200 rounded"></div>
+                      <span className="text-gray-700 font-medium">This Week</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div>
+                      <span className="text-gray-700 font-medium">High Priority</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 bg-yellow-500 rounded-full"></div>
+                      <span className="text-gray-700 font-medium">Medium Priority</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 bg-green-500 rounded-full"></div>
+                      <span className="text-gray-700 font-medium">Low Priority</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-xl border border-gray-200">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4">Active Tasks Breakdown</h3>
+                    <BillableChart tasks={tasks.filter(t => !t.completed)} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    ReactDOM.render(<TaskManager />, document.getElementById('root'));
+  </script>
+</body>
+</html>
